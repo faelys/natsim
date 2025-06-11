@@ -18,8 +18,10 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
@@ -47,6 +49,10 @@ func main() {
 	}
 
 	log.Println("natsim " + version + " started")
+	log.Println("found", len(im.Nats.Filter), "filters")
+	for i, element := range im.Nats.Filter {
+		log.Printf(" %d. %s", i+1, element.String())
+	}
 
 	im.irc.Loop()
 }
@@ -75,6 +81,7 @@ type NatsConfig struct {
 	Server   string
 	NkeySeed string
 	Subjects []string
+	Filter   []FilterElement
 }
 
 type NatsIM struct {
@@ -274,8 +281,100 @@ func (natsim *NatsIM) ircSender() {
 /**************** Nats Callbacks ****************/
 
 func (natsim *NatsIM) natsReceive(m *nats.Msg) {
+	if !IsKept(m.Subject, m.Data, natsim.Nats.Filter, true) {
+		return
+	}
+
 	msg := packMark(natsim.Irc.Show, m.Subject, string(m.Data))
 	natsim.ircSend(msg)
+}
+
+/**************** Filters ****************/
+
+type FilterElement struct {
+	Result bool
+	Part   FilterPart
+	Test   *regexp.Regexp
+}
+
+type FilterPart int
+
+const (
+	FilterSubject FilterPart = iota
+	FilterData
+)
+
+func (element *FilterElement) Match(subject string, data []byte) bool {
+	var b []byte
+	switch element.Part {
+	case FilterSubject:
+		b = []byte(subject)
+	case FilterData:
+		b = data
+	default:
+		panic("Unexpected part")
+	}
+
+	return element.Test.Match(b)
+}
+
+func (element *FilterElement) String() string {
+	r := "drop "
+	if element.Result {
+		r = "pass "
+	}
+
+	p := ""
+	switch element.Part {
+	case FilterSubject:
+		p = "subject "
+	case FilterData:
+		p = "data "
+	default:
+		panic("Unexpected part")
+	}
+
+	return r + p + element.Test.String()
+}
+
+func (element *FilterElement) UnmarshalText(text []byte) error {
+	s := string(text)
+
+	switch {
+	case strings.HasPrefix(s, "pass "):
+		element.Result = true
+		s = s[5:]
+	case strings.HasPrefix(s, "drop "):
+		element.Result = false
+		s = s[5:]
+	default:
+		return fmt.Errorf("malformed filter %q", s)
+	}
+
+	switch {
+	case strings.HasPrefix(s, "subject "):
+		element.Part = FilterSubject
+		s = s[8:]
+	case strings.HasPrefix(s, "data "):
+		element.Part = FilterData
+		s = s[5:]
+	default:
+		return fmt.Errorf("bad filter part %q", s)
+	}
+
+	re, err := regexp.Compile(s)
+	element.Test = re
+	return err
+}
+
+func IsKept(subject string, data []byte, elements []FilterElement, base bool) bool {
+	for _, element := range elements {
+		if element.Match(subject, data) {
+			return element.Result
+		}
+	}
+
+	return base
 }
 
 /**************** Tools ****************/
