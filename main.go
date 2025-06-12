@@ -206,10 +206,10 @@ func (natsim *NatsIM) doCommands() {
 			}
 
 		case "version":
-			natsim.ircSend("natsim " + version)
+			natsim.ircSendf("natsim %s", version)
 
 		default:
-			natsim.ircSend("Unknown command: " + cmd.name)
+			natsim.ircSendf("Unknown command %q", cmd.name)
 		}
 	}
 }
@@ -233,7 +233,7 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 }
 
 func (natsim *NatsIM) ircSendError(context string, err error) {
-	prefix := "[E]"
+	prefix := "[E] "
 	if context != "" {
 		prefix += context + ": "
 	}
@@ -263,6 +263,10 @@ func (natsim *NatsIM) ircSend(s string) {
 			offset += l
 		}
 	}
+}
+
+func (natsim *NatsIM) ircSendf(format string, a ...interface{}) {
+	natsim.ircSend(fmt.Sprintf(format, a...))
 }
 
 func (natsim *NatsIM) ircSender() {
