@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 
 	"github.com/nats-io/nats.go"
 	"github.com/pelletier/go-toml/v2"
@@ -92,6 +93,7 @@ type NatsIM struct {
 	nc       *nats.Conn
 	cmdQueue chan command
 	ircQueue chan string
+	dropped  atomic.Uint32
 	buf      strings.Builder
 }
 
@@ -242,7 +244,11 @@ func (natsim *NatsIM) ircSendError(context string, err error) {
 
 func (natsim *NatsIM) ircSend(s string) {
 	if natsim.Irc.MaxLine <= 0 || len(s) < natsim.Irc.MaxLine {
-		natsim.ircQueue <- s
+		select {
+		case natsim.ircQueue <- s:
+		default:
+			natsim.dropped.Add(1)
+		}
 	} else {
 		for offset := 0; offset < len(s); {
 			l := len(s) - offset
@@ -259,7 +265,11 @@ func (natsim *NatsIM) ircSend(s string) {
 				natsim.buf.WriteString(natsim.Irc.ContSuffix)
 			}
 
-			natsim.ircQueue <- natsim.buf.String()
+			select {
+			case natsim.ircQueue <- natsim.buf.String():
+			default:
+				natsim.dropped.Add(1)
+			}
 			offset += l
 		}
 	}
@@ -270,10 +280,25 @@ func (natsim *NatsIM) ircSendf(format string, a ...interface{}) {
 }
 
 func (natsim *NatsIM) ircSender() {
+	var dropped uint32
+
 	for {
-		line, ok := <-natsim.ircQueue
-		if !ok {
-			return
+		var line string
+
+		if len(natsim.ircQueue) == 0 {
+			dropped += natsim.dropped.Swap(0)
+		}
+
+		if dropped > 0 {
+			line = fmt.Sprintf("Dropped %d lines", dropped)
+			dropped = 0
+		} else {
+			s, ok := <-natsim.ircQueue
+			if ok {
+				line = s
+			} else {
+				return
+			}
 		}
 
 		// TODO: rate limitation
