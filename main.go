@@ -23,8 +23,10 @@ import (
 	"os"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/pelletier/go-toml/v2"
@@ -76,6 +78,7 @@ type IrcConfig struct {
 	MaxLine    int
 	ContSuffix string
 	ContPrefix string
+	AntiFlood  antiflood
 }
 
 type NatsConfig struct {
@@ -281,6 +284,10 @@ func (natsim *NatsIM) ircSendf(format string, a ...interface{}) {
 
 func (natsim *NatsIM) ircSender() {
 	var dropped uint32
+	var nindex = 0
+	floodend := make([]time.Time, natsim.Irc.AntiFlood.count)
+	delay := natsim.Irc.AntiFlood.delay / time.Duration(natsim.Irc.AntiFlood.count)
+	prev := time.Now()
 
 	for {
 		var line string
@@ -290,8 +297,18 @@ func (natsim *NatsIM) ircSender() {
 		}
 
 		if dropped > 0 {
-			line = fmt.Sprintf("Dropped %d lines", dropped)
-			dropped = 0
+			select {
+			case s, ok := <-natsim.ircQueue:
+				if ok {
+					line = s
+				} else {
+					return
+				}
+			case <-time.After(delay):
+				dropped += natsim.dropped.Swap(0)
+				line = fmt.Sprintf("Dropped %d lines", dropped)
+				dropped = 0
+			}
 		} else {
 			s, ok := <-natsim.ircQueue
 			if ok {
@@ -301,9 +318,15 @@ func (natsim *NatsIM) ircSender() {
 			}
 		}
 
-		// TODO: rate limitation
+		if time.Until(floodend[nindex]) > 0 {
+			time.Sleep(time.Until(prev.Add(delay)))
+		}
 
 		natsim.irc.Privmsg(natsim.Irc.Channel, line)
+
+		prev = time.Now()
+		floodend[nindex] = prev.Add(natsim.Irc.AntiFlood.delay)
+		nindex = (nindex + 1) % natsim.Irc.AntiFlood.count
 	}
 }
 
@@ -407,6 +430,35 @@ func IsKept(subject string, data []byte, elements []FilterElement, base bool) bo
 }
 
 /**************** Tools ****************/
+
+type antiflood struct {
+	count int
+	delay time.Duration
+}
+
+func (af *antiflood) UnmarshalText(text []byte) error {
+	if before, after, found := strings.Cut(string(text), "/"); found {
+		if n, err := strconv.Atoi(before); err != nil {
+			return err
+		} else {
+			af.count = n
+		}
+
+		if d, err := time.ParseDuration(after); err != nil {
+			return err
+		} else {
+			af.delay = d
+		}
+
+	} else if d, err := time.ParseDuration(string(text)); err != nil {
+		return err
+	} else {
+		af.count = 1
+		af.delay = d
+	}
+
+	return nil
+}
 
 func packMark(mark LineMark, name, arg string) string {
 	return mark.Start + name + mark.Mid + arg + mark.End
