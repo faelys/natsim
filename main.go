@@ -246,35 +246,10 @@ func (natsim *NatsIM) ircSendError(context string, err error) {
 }
 
 func (natsim *NatsIM) ircSend(s string) {
-	if natsim.Irc.MaxLine <= 0 || len(s) < natsim.Irc.MaxLine {
-		select {
-		case natsim.ircQueue <- s:
-		default:
-			natsim.dropped.Add(1)
-		}
-	} else {
-		for offset := 0; offset < len(s); {
-			l := len(s) - offset
-			natsim.buf.Reset()
-			if offset > 0 {
-				natsim.buf.WriteString(natsim.Irc.ContPrefix)
-			}
-
-			if natsim.buf.Len()+l <= natsim.Irc.MaxLine {
-				natsim.buf.WriteString(s[offset:])
-			} else {
-				l = natsim.Irc.MaxLine - natsim.buf.Len() - len(natsim.Irc.ContSuffix)
-				natsim.buf.WriteString(s[offset : offset+l])
-				natsim.buf.WriteString(natsim.Irc.ContSuffix)
-			}
-
-			select {
-			case natsim.ircQueue <- natsim.buf.String():
-			default:
-				natsim.dropped.Add(1)
-			}
-			offset += l
-		}
+	select {
+	case natsim.ircQueue <- s:
+	default:
+		natsim.dropped.Add(1)
 	}
 }
 
@@ -290,7 +265,7 @@ func (natsim *NatsIM) ircSender() {
 	prev := time.Now()
 
 	for {
-		var line string
+		var lines []string
 
 		if len(natsim.ircQueue) == 0 {
 			dropped += natsim.dropped.Swap(0)
@@ -300,34 +275,67 @@ func (natsim *NatsIM) ircSender() {
 			select {
 			case s, ok := <-natsim.ircQueue:
 				if ok {
-					line = s
+					lines = natsim.ircSplit(s)
 				} else {
 					return
 				}
 			case <-time.After(delay):
 				dropped += natsim.dropped.Swap(0)
-				line = fmt.Sprintf("Dropped %d lines", dropped)
+				lines = []string{fmt.Sprintf("Dropped %d messages", dropped)}
 				dropped = 0
 			}
 		} else {
 			s, ok := <-natsim.ircQueue
 			if ok {
-				line = s
+				lines = natsim.ircSplit(s)
 			} else {
 				return
 			}
 		}
 
-		if time.Until(floodend[nindex]) > 0 {
-			time.Sleep(time.Until(prev.Add(delay)))
+		for _, line := range lines {
+			if time.Until(floodend[nindex]) > 0 {
+				time.Sleep(time.Until(prev.Add(delay)))
+			}
+
+			natsim.irc.Privmsg(natsim.Irc.Channel, line)
+
+			prev = time.Now()
+			floodend[nindex] = prev.Add(natsim.Irc.AntiFlood.delay)
+			nindex = (nindex + 1) % natsim.Irc.AntiFlood.count
 		}
-
-		natsim.irc.Privmsg(natsim.Irc.Channel, line)
-
-		prev = time.Now()
-		floodend[nindex] = prev.Add(natsim.Irc.AntiFlood.delay)
-		nindex = (nindex + 1) % natsim.Irc.AntiFlood.count
 	}
+}
+
+func (natsim *NatsIM) ircSplit(s string) []string {
+	var result []string
+
+	for _, line := range strings.Split(s, "\n") {
+		if natsim.Irc.MaxLine <= 0 || len(line) < natsim.Irc.MaxLine {
+			result = append(result, line)
+		} else {
+			for offset := 0; offset < len(line); {
+				l := len(line) - offset
+				natsim.buf.Reset()
+				if offset > 0 {
+					natsim.buf.WriteString(natsim.Irc.ContPrefix)
+				}
+
+				if natsim.buf.Len()+l <= natsim.Irc.MaxLine {
+					natsim.buf.WriteString(line[offset:])
+				} else {
+					l = natsim.Irc.MaxLine - natsim.buf.Len() - len(natsim.Irc.ContSuffix)
+					natsim.buf.WriteString(line[offset : offset+l])
+					natsim.buf.WriteString(natsim.Irc.ContSuffix)
+				}
+
+				result = append(result, natsim.buf.String())
+				offset += l
+			}
+		}
+	}
+
+	return result
 }
 
 /**************** Nats Callbacks ****************/
