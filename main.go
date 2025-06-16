@@ -146,12 +146,17 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 	natsim.cmdQueue = make(chan command, 10)
 	natsim.ircQueue = make(chan string, 10)
 
-	opt, err := nats.NkeyOptionFromSeed(natsim.Nats.NkeySeed)
+	optSeed, err := nats.NkeyOptionFromSeed(natsim.Nats.NkeySeed)
 	if err != nil {
 		return nil, err
 	}
 
-	natsim.nc, err = nats.Connect(natsim.Nats.Server, opt)
+	natsim.nc, err = nats.Connect(natsim.Nats.Server,
+		optSeed,
+		nats.ConnectHandler(natsim.natsConnected),
+		nats.DisconnectErrHandler(natsim.natsDisconnected),
+		nats.ReconnectHandler(natsim.natsReconnected),
+		nats.ReconnectErrHandler(natsim.natsReconnectErr))
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +345,16 @@ func (natsim *NatsIM) ircSplit(s string) []string {
 
 /**************** Nats Callbacks ****************/
 
+func (natsim *NatsIM) natsConnected(c *nats.Conn) {
+	natsim.ircSend("Connected to " + c.ConnectedUrlRedacted())
+}
+
+func (natsim *NatsIM) natsDisconnected(c *nats.Conn, err error) {
+	if err != nil {
+		natsim.ircSendError("Disconnected", err)
+	}
+}
+
 func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 	if !IsKept(m.Subject, m.Data, natsim.Nats.Filter, true) {
 		return
@@ -347,6 +362,14 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 
 	msg := packMark(natsim.Irc.Show, m.Subject, string(m.Data))
 	natsim.ircSend(msg)
+}
+
+func (natsim *NatsIM) natsReconnected(c *nats.Conn) {
+	natsim.ircSend("Reconnected to " + c.ConnectedUrlRedacted())
+}
+
+func (natsim *NatsIM) natsReconnectErr(c *nats.Conn, err error) {
+	natsim.ircSendError("Reconnect", err)
 }
 
 /**************** Filters ****************/
