@@ -146,24 +146,9 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 	natsim.cmdQueue = make(chan command, 10)
 	natsim.ircQueue = make(chan string, 10)
 
-	optSeed, err := nats.NkeyOptionFromSeed(natsim.Nats.NkeySeed)
-	if err != nil {
-		return nil, err
-	}
-
-	natsim.nc, err = nats.Connect(natsim.Nats.Server,
-		optSeed,
-		nats.ConnectHandler(natsim.natsConnected),
-		nats.DisconnectErrHandler(natsim.natsDisconnected),
-		nats.ReconnectHandler(natsim.natsReconnected),
-		nats.ReconnectErrHandler(natsim.natsReconnectErr))
-	if err != nil {
-		return nil, err
-	}
-
 	natsim.irc = irc.IRC(natsim.Irc.Nick, "natsim")
 	natsim.irc.AddCallback("001", natsim.ircJoin)
-	natsim.irc.AddCallback("366", func(e *irc.Event) {})
+	natsim.irc.AddCallback("366", natsim.ircJoined)
 	natsim.irc.AddCallback("PRIVMSG", natsim.ircReceive)
 
 	err = natsim.irc.Connect(natsim.Irc.Server)
@@ -228,6 +213,26 @@ func (natsim *NatsIM) doCommands() {
 
 func (natsim *NatsIM) ircJoin(e *irc.Event) {
 	natsim.irc.Join(natsim.Irc.Channel)
+}
+
+func (natsim *NatsIM) ircJoined(e *irc.Event) {
+	optSeed, err := nats.NkeyOptionFromSeed(natsim.Nats.NkeySeed)
+	if err != nil {
+		natsim.ircSendError("NkeyOptionFromSeed", err)
+		return
+	}
+
+	natsim.nc, err = nats.Connect(natsim.Nats.Server,
+		optSeed,
+		nats.ConnectHandler(natsim.natsConnected),
+		nats.DisconnectErrHandler(natsim.natsDisconnected),
+		nats.ReconnectHandler(natsim.natsReconnected),
+		nats.ReconnectErrHandler(natsim.natsReconnectErr))
+	if err != nil {
+		natsim.ircSendError("Connect", err)
+		return
+	}
+
 	natsim.cmdQueue <- command{name: "subscribeAll", arg: ""}
 }
 
