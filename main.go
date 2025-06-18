@@ -193,13 +193,6 @@ func (natsim *NatsIM) doCommands() {
 			natsim.irc.QuitMessage = cmd.arg
 			natsim.Close()
 
-		case "subscribeAll":
-			for _, subject := range natsim.Nats.Subjects {
-				if _, err := natsim.nc.Subscribe(subject, natsim.natsReceive); err != nil {
-					natsim.ircSendError("Subscribe", err)
-				}
-			}
-
 		case "version":
 			natsim.ircSendf("natsim %s", version)
 
@@ -233,7 +226,11 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 		return
 	}
 
-	natsim.cmdQueue <- command{name: "subscribeAll", arg: ""}
+	for _, subject := range natsim.Nats.Subjects {
+		if _, err := natsim.nc.Subscribe(subject, natsim.natsReceive); err != nil {
+			natsim.ircSendError("Subscribe", err)
+		}
+	}
 }
 
 func (natsim *NatsIM) ircReceive(e *irc.Event) {
