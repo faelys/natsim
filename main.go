@@ -75,6 +75,8 @@ type IrcConfig struct {
 	Cmd        LineMark
 	Send       LineMark
 	Show       LineMark
+	ShowReply  *LineMark
+	ShowHeader *LineMark
 	MaxLine    int
 	ContSuffix string
 	ContPrefix string
@@ -362,8 +364,24 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 		return
 	}
 
-	msg := packMark(natsim.Irc.Show, m.Subject, string(m.Data))
-	natsim.ircSend(msg)
+	var sb strings.Builder
+	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, string(m.Data)))
+
+	if m.Reply != "" && natsim.Irc.ShowReply != nil {
+		sb.WriteString(natsim.Irc.ShowReply.Start)
+		sb.WriteString(m.Reply)
+		sb.WriteString(natsim.Irc.ShowReply.End)
+	}
+
+	if natsim.Irc.ShowHeader != nil {
+		for key, values := range m.Header {
+			for _, value := range values {
+				sb.WriteString(packMark(*natsim.Irc.ShowHeader, key, value))
+			}
+		}
+	}
+
+	natsim.ircSend(sb.String())
 }
 
 func (natsim *NatsIM) natsReconnected(c *nats.Conn) {
