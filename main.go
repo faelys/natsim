@@ -99,7 +99,6 @@ type NatsIM struct {
 	cmdQueue chan command
 	ircQueue chan string
 	dropped  atomic.Uint32
-	buf      strings.Builder
 }
 
 func NewNatsIM(configPath string) (*NatsIM, error) {
@@ -324,21 +323,21 @@ func (natsim *NatsIM) ircSplit(s string) []string {
 			result = append(result, line)
 		} else {
 			for offset := 0; offset < len(line); {
+				var buf strings.Builder
 				l := len(line) - offset
-				natsim.buf.Reset()
 				if offset > 0 {
-					natsim.buf.WriteString(natsim.Irc.ContPrefix)
+					buf.WriteString(natsim.Irc.ContPrefix)
 				}
 
-				if natsim.buf.Len()+l <= natsim.Irc.MaxLine {
-					natsim.buf.WriteString(line[offset:])
+				if buf.Len()+l <= natsim.Irc.MaxLine {
+					buf.WriteString(line[offset:])
 				} else {
-					l = natsim.Irc.MaxLine - natsim.buf.Len() - len(natsim.Irc.ContSuffix)
-					natsim.buf.WriteString(line[offset : offset+l])
-					natsim.buf.WriteString(natsim.Irc.ContSuffix)
+					l = natsim.Irc.MaxLine - buf.Len() - len(natsim.Irc.ContSuffix)
+					buf.WriteString(line[offset : offset+l])
+					buf.WriteString(natsim.Irc.ContSuffix)
 				}
 
-				result = append(result, natsim.buf.String())
+				result = append(result, buf.String())
 				offset += l
 			}
 		}
