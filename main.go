@@ -17,6 +17,8 @@
 package main
 
 import (
+	"database/sql"
+	"embed"
 	"errors"
 	"fmt"
 	"log"
@@ -28,6 +30,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	_ "github.com/glebarez/go-sqlite"
 	"github.com/nats-io/nats.go"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/thoj/go-ircevent"
@@ -83,6 +86,12 @@ type IrcConfig struct {
 	AntiFlood  antiflood
 }
 
+type LogConfig struct {
+	SqlDriver     string
+	SqlConnection string
+	Filter        []FilterElement
+}
+
 type NatsConfig struct {
 	Server   string
 	NkeySeed string
@@ -92,13 +101,17 @@ type NatsConfig struct {
 
 type NatsIM struct {
 	Irc  IrcConfig
+	Log  LogConfig
 	Nats NatsConfig
 
-	irc      *irc.Connection
-	nc       *nats.Conn
-	cmdQueue chan command
-	ircQueue chan string
-	dropped  atomic.Uint32
+	irc            *irc.Connection
+	nc             *nats.Conn
+	db             *sql.DB
+	insertReceived *sql.Stmt
+	insertSent     *sql.Stmt
+	cmdQueue       chan command
+	ircQueue       chan string
+	dropped        atomic.Uint32
 }
 
 func NewNatsIM(configPath string) (*NatsIM, error) {
@@ -144,6 +157,13 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 		natsim.Irc.ContSuffix = ""
 	}
 
+	if natsim.Log.SqlDriver != "" {
+		if err := natsim.logInit(); err != nil {
+			natsim.Close()
+			return nil, err
+		}
+	}
+
 	natsim.cmdQueue = make(chan command, 10)
 	natsim.ircQueue = make(chan string, 10)
 
@@ -173,6 +193,27 @@ func (natsim *NatsIM) Close() {
 	if natsim.nc != nil {
 		natsim.nc.Close()
 		natsim.nc = nil
+	}
+
+	if natsim.insertReceived != nil {
+		if err := natsim.insertReceived.Close(); err != nil {
+			log.Println("Close insertReceived:", err)
+		}
+		natsim.insertReceived = nil
+	}
+
+	if natsim.insertSent != nil {
+		if err := natsim.insertSent.Close(); err != nil {
+			log.Println("Close insertSent:", err)
+		}
+		natsim.insertSent = nil
+	}
+
+	if natsim.db != nil {
+		if err := natsim.db.Close(); err != nil {
+			log.Println("Close log DB:", err)
+		}
+		natsim.db = nil
 	}
 
 	close(natsim.cmdQueue)
@@ -241,6 +282,8 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
 		if err := natsim.nc.Publish(subject, []byte(data)); err != nil {
 			natsim.ircSendError("Publish", err)
+		} else {
+			natsim.logSent(subject, data)
 		}
 	}
 }
@@ -363,6 +406,8 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 		return
 	}
 
+	natsim.logReceived(m)
+
 	var sb strings.Builder
 	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, string(m.Data)))
 
@@ -389,6 +434,87 @@ func (natsim *NatsIM) natsReconnected(c *nats.Conn) {
 
 func (natsim *NatsIM) natsReconnectErr(c *nats.Conn, err error) {
 	natsim.ircSendError("Reconnect", err)
+}
+
+/**************** Log to Database ****************/
+
+//go:embed init.sql
+var embeddedSQL embed.FS
+
+func (natsim *NatsIM) logInit() error {
+	if natsim.Log.SqlDriver == "" {
+		return nil
+	}
+
+	var err error
+
+	natsim.db, err = sql.Open(natsim.Log.SqlDriver, natsim.Log.SqlConnection)
+	if err != nil {
+		log.Println("sql.Open:", err)
+		return err
+	}
+
+	var version int
+	if err = natsim.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		log.Println("query user_verison", err)
+		return err
+	}
+
+	switch version {
+	case 0:
+		initSQL, err := embeddedSQL.ReadFile("init.sql")
+		if err != nil {
+			log.Println("embedded.ReadFile:", err)
+			return err
+		}
+
+		if _, err = natsim.db.Exec(string(initSQL)); err != nil {
+			log.Println("Init log DB:", err)
+			return err
+		}
+
+	case 1:
+
+	default:
+		log.Println("Unsupported database version:", version)
+		return errors.New("unsupported database version")
+	}
+
+	natsim.insertReceived, err = natsim.db.Prepare("INSERT INTO received_view(timestamp,subject,data) VALUES (?,?,?);")
+	if err != nil {
+		log.Println("Prepare insertReceived:", err)
+		return err
+	}
+
+	natsim.insertSent, err = natsim.db.Prepare("INSERT INTO sent_view(timestamp,subject,data) VALUES (?,?,?);")
+	if err != nil {
+		log.Println("Prepare insertSent:", err)
+		return err
+	}
+
+	return nil
+}
+
+func (natsim *NatsIM) logReceived(msg *nats.Msg) {
+	if natsim.db == nil || natsim.insertReceived == nil {
+		return
+	}
+
+	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
+	if _, err := natsim.insertReceived.Exec(t, msg.Subject, msg.Data); err != nil {
+		natsim.ircSendError("insertReceived.Exec", err)
+	}
+}
+
+func (natsim *NatsIM) logSent(subject, data string) {
+	if natsim.db == nil || natsim.insertSent == nil {
+		return
+	}
+
+	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
+	if _, err := natsim.insertSent.Exec(t, subject, data); err != nil {
+		natsim.ircSendError("insertSent.Exec", err)
+	}
 }
 
 /**************** Filters ****************/
