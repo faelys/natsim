@@ -480,7 +480,7 @@ func (natsim *NatsIM) logInit() error {
 		return errors.New("unsupported database version")
 	}
 
-	natsim.insertReceived, err = natsim.db.Prepare("INSERT INTO received_view(timestamp,subject,data) VALUES (?,?,?);")
+	natsim.insertReceived, err = natsim.db.Prepare("INSERT INTO received_view(timestamp,subject,reply_subject,data) VALUES (?,?,?,?);")
 	if err != nil {
 		log.Println("Prepare insertReceived:", err)
 		return err
@@ -501,7 +501,7 @@ func (natsim *NatsIM) logReceived(msg *nats.Msg) {
 	}
 
 	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
-	if _, err := natsim.insertReceived.Exec(t, msg.Subject, msg.Data); err != nil {
+	if _, err := natsim.insertReceived.Exec(t, msg.Subject, msg.Reply, msg.Data); err != nil {
 		natsim.ircSendError("insertReceived.Exec", err)
 	}
 }
