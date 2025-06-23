@@ -107,6 +107,7 @@ type NatsIM struct {
 	irc            *irc.Connection
 	nc             *nats.Conn
 	db             *sql.DB
+	ensureSubject  *sql.Stmt
 	insertReceived *sql.Stmt
 	insertSent     *sql.Stmt
 	cmdQueue       chan command
@@ -193,6 +194,13 @@ func (natsim *NatsIM) Close() {
 	if natsim.nc != nil {
 		natsim.nc.Close()
 		natsim.nc = nil
+	}
+
+	if natsim.ensureSubject != nil {
+		if err := natsim.ensureSubject.Close(); err != nil {
+			log.Println("Close ensureSubject:", err)
+		}
+		natsim.ensureSubject = nil
 	}
 
 	if natsim.insertReceived != nil {
@@ -480,7 +488,13 @@ func (natsim *NatsIM) logInit() error {
 		return errors.New("unsupported database version")
 	}
 
-	natsim.insertReceived, err = natsim.db.Prepare("INSERT INTO received_view(timestamp,subject,reply_subject,data) VALUES (?,?,?,?);")
+	natsim.ensureSubject, err = natsim.db.Prepare("INSERT INTO subjects(name) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE name = ?);")
+	if err != nil {
+		log.Println("Prepare ensureSubject:", err)
+		return err
+	}
+
+	natsim.insertReceived, err = natsim.db.Prepare("INSERT INTO received(timestamp,subject_id,reply_subject_id,data) VALUES (?, (SELECT id FROM subjects WHERE name = ?), (SELECT id FROM subjects WHERE name = ?), ?);")
 	if err != nil {
 		log.Println("Prepare insertReceived:", err)
 		return err
@@ -500,9 +514,29 @@ func (natsim *NatsIM) logReceived(msg *nats.Msg) {
 		return
 	}
 
+	if _, err := natsim.ensureSubject.Exec(msg.Subject, msg.Subject); err != nil {
+		natsim.ircSendError("ensureSubject.Exec", err)
+		return
+	}
+
+	var reply sql.NullString
+	if msg.Reply != "" {
+		if _, err := natsim.ensureSubject.Exec(msg.Reply, msg.Reply); err != nil {
+			natsim.ircSendError("ensureReply.Exec", err)
+			return
+		}
+		reply = sql.NullString{String: msg.Reply, Valid: true}
+	}
+
 	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
-	if _, err := natsim.insertReceived.Exec(t, msg.Subject, msg.Reply, msg.Data); err != nil {
+	if r, err := natsim.insertReceived.Exec(t, msg.Subject, reply, msg.Data); err != nil {
 		natsim.ircSendError("insertReceived.Exec", err)
+	} else if id, err := r.LastInsertId(); err != nil {
+		natsim.ircSendError("LastInsertId", err)
+	} else if id <= 0 {
+		natsim.ircSendf("LastInsertId returned invalid id %d", id)
+	} else {
+		log.Println("Inserted received id:", id)
 	}
 }
 
