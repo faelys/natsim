@@ -109,6 +109,7 @@ type NatsIM struct {
 	db             *sql.DB
 	ensureSubject  *sql.Stmt
 	insertReceived *sql.Stmt
+	insertRHeader  *sql.Stmt
 	insertSent     *sql.Stmt
 	cmdQueue       chan command
 	ircQueue       chan string
@@ -208,6 +209,13 @@ func (natsim *NatsIM) Close() {
 			log.Println("Close insertReceived:", err)
 		}
 		natsim.insertReceived = nil
+	}
+
+	if natsim.insertRHeader != nil {
+		if err := natsim.insertRHeader.Close(); err != nil {
+			log.Println("Close insertRHeader:", err)
+		}
+		natsim.insertRHeader = nil
 	}
 
 	if natsim.insertSent != nil {
@@ -500,6 +508,12 @@ func (natsim *NatsIM) logInit() error {
 		return err
 	}
 
+	natsim.insertRHeader, err = natsim.db.Prepare("INSERT INTO received_headers_view(msg_id,key,value) VALUES (?,?,?);")
+	if err != nil {
+		log.Println("Prepare insertRHeader:", err)
+		return err
+	}
+
 	natsim.insertSent, err = natsim.db.Prepare("INSERT INTO sent_view(timestamp,subject,data) VALUES (?,?,?);")
 	if err != nil {
 		log.Println("Prepare insertSent:", err)
@@ -536,7 +550,13 @@ func (natsim *NatsIM) logReceived(msg *nats.Msg) {
 	} else if id <= 0 {
 		natsim.ircSendf("LastInsertId returned invalid id %d", id)
 	} else {
-		log.Println("Inserted received id:", id)
+		for key, values := range msg.Header {
+			for _, value := range values {
+				if _, err := natsim.insertRHeader.Exec(id, key, value); err != nil {
+					natsim.ircSendf("insertRHeader(%q, %q): %s", key, value, err)
+				}
+			}
+		}
 	}
 }
 
