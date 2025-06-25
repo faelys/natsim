@@ -55,10 +55,6 @@ func main() {
 	}
 
 	log.Println("natsim " + version + " started")
-	log.Println("found", len(im.Nats.Filter), "filters")
-	for i, element := range im.Nats.Filter {
-		log.Printf(" %d. %s", i+1, element.String())
-	}
 
 	im.irc.Loop()
 }
@@ -84,6 +80,7 @@ type IrcConfig struct {
 	ContSuffix string
 	ContPrefix string
 	AntiFlood  antiflood
+	Filter     []FilterElement
 }
 
 type LogConfig struct {
@@ -422,7 +419,13 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 		return
 	}
 
-	natsim.logReceived(m)
+	if IsKept(m.Subject, m.Data, natsim.Log.Filter, true) {
+		natsim.logReceived(m)
+	}
+
+	if !IsKept(m.Subject, m.Data, natsim.Irc.Filter, true) {
+		return
+	}
 
 	var sb strings.Builder
 	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, string(m.Data)))
