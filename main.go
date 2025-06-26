@@ -103,6 +103,7 @@ type NatsIM struct {
 
 	irc            *irc.Connection
 	nc             *nats.Conn
+	subs           []*nats.Subscription
 	db             *sql.DB
 	ensureSubject  *sql.Stmt
 	insertReceived *sql.Stmt
@@ -282,8 +283,10 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 	}
 
 	for _, subject := range natsim.Nats.Subjects {
-		if _, err := natsim.nc.Subscribe(subject, natsim.natsReceive); err != nil {
+		if s, err := natsim.nc.Subscribe(subject, natsim.natsReceive); err != nil {
 			natsim.ircSendError("Subscribe", err)
+		} else {
+			natsim.subs = append(natsim.subs, s)
 		}
 	}
 }
