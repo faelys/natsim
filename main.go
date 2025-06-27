@@ -244,6 +244,14 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "subscriptions":
+			var buf strings.Builder
+			buf.WriteString(fmt.Sprintf("Current subscriptions (%d):", len(natsim.subs)))
+			for i, s := range natsim.subs {
+				buf.WriteString(fmt.Sprintf("\n%d. %s", i+1, s.Subject))
+			}
+			natsim.ircSend(buf.String())
+
 		case "quit":
 			log.Println("Quit command", cmd.arg)
 			natsim.irc.QuitMessage = cmd.arg
