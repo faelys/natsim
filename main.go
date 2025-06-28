@@ -244,6 +244,14 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "subscribe":
+			if s, err := natsim.nc.Subscribe(cmd.arg, natsim.natsReceive); err != nil {
+				natsim.ircSendError("Subscribe", err)
+			} else {
+				natsim.subs = append(natsim.subs, s)
+				natsim.ircSendf("Subscribed to %q", s.Subject)
+			}
+
 		case "subscriptions":
 			var buf strings.Builder
 			buf.WriteString(fmt.Sprintf("Current subscriptions (%d):", len(natsim.subs)))
