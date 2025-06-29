@@ -265,6 +265,28 @@ func (natsim *NatsIM) doCommands() {
 			natsim.irc.QuitMessage = cmd.arg
 			natsim.Close()
 
+		case "unsubscribe":
+			if n, err := strconv.Atoi(cmd.arg); err == nil && n > 0 && n <= len(natsim.subs) {
+				if err = natsim.subs[n-1].Unsubscribe(); err != nil {
+					natsim.ircSendError("Unsubscribe", err)
+				} else {
+					natsim.ircSendf("Unsubscribed from %q", natsim.subs[n-1].Subject)
+					natsim.subs = append(natsim.subs[:n-1], natsim.subs[n:]...)
+				}
+			} else {
+				n := 0
+				for i, s := range natsim.subs {
+					if s.Subject != cmd.arg {
+						natsim.subs[n] = natsim.subs[i]
+						n++
+					} else if err = s.Unsubscribe(); err != nil {
+						natsim.ircSendError("Unsubscribe", err)
+					}
+				}
+				natsim.ircSendf("Unsubscribed from %d subjects", len(natsim.subs)-n)
+				natsim.subs = natsim.subs[:n]
+			}
+
 		case "version":
 			natsim.ircSendf("natsim %s", version)
 
