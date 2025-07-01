@@ -244,6 +244,14 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "filters":
+			var buf strings.Builder
+			buf.WriteString(fmt.Sprintf("Active filters: %d NATS, %d log, %d IRC", len(natsim.Nats.Filter), len(natsim.Log.Filter), len(natsim.Irc.Filter)))
+			WriteFilter(&buf, "\n N", natsim.Nats.Filter)
+			WriteFilter(&buf, "\n L", natsim.Log.Filter)
+			WriteFilter(&buf, "\n I", natsim.Irc.Filter)
+			natsim.ircSend(buf.String())
+
 		case "subscribe":
 			if s, err := natsim.nc.Subscribe(cmd.arg, natsim.natsReceive); err != nil {
 				natsim.ircSendError("Subscribe", err)
@@ -691,6 +699,13 @@ func (element *FilterElement) UnmarshalText(text []byte) error {
 	re, err := regexp.Compile(s)
 	element.Test = re
 	return err
+}
+
+func WriteFilter(buf *strings.Builder, prefix string, filter []FilterElement) {
+	for i, element := range filter {
+		line := fmt.Sprintf("%s%d. %s", prefix, i+1, element.String())
+		buf.WriteString(line)
+	}
 }
 
 func IsKept(subject string, data []byte, elements []FilterElement, base bool) bool {
