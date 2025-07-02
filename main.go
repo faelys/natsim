@@ -244,6 +244,61 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "filter":
+			var plist *[]FilterElement
+			var name string
+			index := -1
+			place, eltstr, _ := strings.Cut(cmd.arg, " ")
+			uplace := strings.ToUpper(place)
+
+			if uplace == "NATS" {
+				plist = &natsim.Nats.Filter
+				name = "N"
+			} else if uplace == "LOG" {
+				plist = &natsim.Log.Filter
+				name = "L"
+			} else if uplace == "IRC" {
+				plist = &natsim.Irc.Filter
+				name = "I"
+			} else if n, err := strconv.Atoi(uplace[1:]); err == nil && (uplace[0:1] == "N" || uplace[0:1] == "L" || uplace[0:1] == "I") {
+				index = n - 1
+				name = uplace[0:1]
+				switch name {
+				case "N":
+					plist = &natsim.Nats.Filter
+				case "L":
+					plist = &natsim.Log.Filter
+				case "I":
+					plist = &natsim.Irc.Filter
+				}
+			} else {
+				natsim.ircSendf("Unable to parse place %q", uplace)
+			}
+
+			var elt FilterElement
+			if plist != nil {
+				err := elt.UnmarshalText([]byte(eltstr))
+				if err != nil {
+					natsim.ircSendError("Parse FilterElement", err)
+					plist = nil
+				}
+			}
+
+			if plist != nil {
+				if index < 0 {
+					index += len(*plist) + 1
+				}
+
+				if index >= 0 && index < len(*plist) {
+					*plist = append((*plist)[:index+1], (*plist)[index:]...)
+					(*plist)[index] = elt
+				} else {
+					index = len(*plist)
+					*plist = append(*plist, elt)
+				}
+				natsim.ircSendf("Inserted filter element %s%d/%d", name, index+1, len(*plist))
+			}
+
 		case "filters":
 			var buf strings.Builder
 			buf.WriteString(fmt.Sprintf("Active filters: %d NATS, %d log, %d IRC", len(natsim.Nats.Filter), len(natsim.Log.Filter), len(natsim.Irc.Filter)))
