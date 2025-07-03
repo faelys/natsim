@@ -328,6 +328,46 @@ func (natsim *NatsIM) doCommands() {
 			natsim.irc.QuitMessage = cmd.arg
 			natsim.Close()
 
+		case "unfilter":
+			uplace := strings.ToUpper(cmd.arg)
+
+			if uplace == "NATS" {
+				n := len(natsim.Nats.Filter)
+				natsim.Nats.Filter = []FilterElement{}
+				natsim.ircSendf("Removed %d NATS filter elements", n)
+			} else if uplace == "LOG" {
+				n := len(natsim.Log.Filter)
+				natsim.Log.Filter = []FilterElement{}
+				natsim.ircSendf("Removed %d log filter elements", n)
+			} else if uplace == "IRC" {
+				n := len(natsim.Irc.Filter)
+				natsim.Irc.Filter = []FilterElement{}
+				natsim.ircSendf("Removed %d IRC filter elements", n)
+			} else if n, err := strconv.Atoi(uplace[1:]); err == nil && (uplace[0:1] == "N" || uplace[0:1] == "L" || uplace[0:1] == "I") {
+				var plist *[]FilterElement
+				index := n - 1
+				name := uplace[0:1]
+				switch name {
+				case "N":
+					plist = &natsim.Nats.Filter
+				case "L":
+					plist = &natsim.Log.Filter
+				case "I":
+					plist = &natsim.Irc.Filter
+				}
+				if n < 0 {
+					index = len(*plist) + n
+				}
+				if index < 0 || index >= len(*plist) {
+					natsim.ircSendf("Bad filter index %d for %s%d", index, name, len(*plist))
+				} else {
+					*plist = append((*plist)[:index], (*plist)[index+1:]...)
+					natsim.ircSendf("Removed filter %s%d/%d", name, index+1, len(*plist)+1)
+				}
+			} else {
+				natsim.ircSendf("Unable to parse place %q", uplace)
+			}
+
 		case "unsubscribe":
 			if n, err := strconv.Atoi(cmd.arg); err == nil && n > 0 && n <= len(natsim.subs) {
 				if err = natsim.subs[n-1].Unsubscribe(); err != nil {
