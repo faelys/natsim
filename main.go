@@ -307,6 +307,30 @@ func (natsim *NatsIM) doCommands() {
 			WriteFilter(&buf, "\n I", natsim.Irc.Filter)
 			natsim.ircSend(buf.String())
 
+		case "status":
+			var buf strings.Builder
+
+			if err := natsim.nc.LastError(); err != nil {
+				buf.WriteString("Last error: ")
+				buf.WriteString(err.Error())
+				buf.WriteString("\n")
+			}
+
+			buf.WriteString(natsim.nc.Status().String())
+
+			if url := natsim.nc.ConnectedUrlRedacted(); url != "" {
+				buf.WriteString(" to ")
+				buf.WriteString(url)
+			}
+
+			if rtt, err := natsim.nc.RTT(); err == nil {
+				buf.WriteString(", RTT ")
+				buf.WriteString(rtt.String())
+			}
+
+			buf.WriteString(fmt.Sprintf(", %d subscriptions", natsim.nc.NumSubscriptions()))
+			natsim.ircSend(buf.String())
+
 		case "subscribe":
 			if s, err := natsim.nc.Subscribe(cmd.arg, natsim.natsReceive); err != nil {
 				natsim.ircSendError("Subscribe", err)
