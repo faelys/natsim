@@ -30,6 +30,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/nats-io/nats.go"
 	"github.com/pelletier/go-toml/v2"
@@ -328,7 +329,7 @@ func (natsim *NatsIM) doCommands() {
 				buf.WriteString(rtt.String())
 			}
 
-			buf.WriteString(fmt.Sprintf(", %d subscriptions", natsim.nc.NumSubscriptions()))
+			buf.WriteString(fmt.Sprintf(", %d subscriptions\n%s", natsim.nc.NumSubscriptions(), natsim.natsStats()))
 			natsim.ircSend(buf.String())
 
 		case "subscribe":
@@ -623,6 +624,16 @@ func (natsim *NatsIM) natsReconnectErr(c *nats.Conn, err error) {
 	natsim.ircSendError("Reconnect", err)
 }
 
+func (natsim *NatsIM) natsStats() string {
+	stats := natsim.nc.Stats()
+	return fmt.Sprintf("%d reconnections, %s / %s msg in, %s / %s msg out",
+		stats.Reconnects,
+		humanize.IBytes(stats.InBytes),
+		humanizeNum(stats.InMsgs),
+		humanize.IBytes(stats.OutBytes),
+		humanizeNum(stats.OutMsgs))
+}
+
 /**************** Log to Database ****************/
 
 //go:embed init.sql
@@ -866,6 +877,14 @@ func (af *antiflood) UnmarshalText(text []byte) error {
 	}
 
 	return nil
+}
+
+func humanizeNum(n uint64) string {
+	num, unit, found := strings.Cut(humanize.Bytes(n), " ")
+	if !found || unit == "" || unit[len(unit)-1:] != "B" {
+		panic("Unexpected huamized result")
+	}
+	return num + unit[:len(unit)-1]
 }
 
 func packMark(mark LineMark, name, arg string) string {

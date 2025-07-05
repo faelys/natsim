@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.23.9
 
 require (
+	github.com/dustin/go-humanize v1.0.1
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/nats-io/nats.go v1.42.0
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -12,7 +13,6 @@ require (
 )
 
 require (
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.5.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
