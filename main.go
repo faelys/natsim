@@ -91,6 +91,7 @@ type LogConfig struct {
 }
 
 type NatsConfig struct {
+	Name     string
 	Server   string
 	NkeySeed string
 	Subjects []string
@@ -127,6 +128,7 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 			Show: LineMark{Mid: ": "},
 		},
 		Nats: NatsConfig{
+			Name:     "nastim",
 			Subjects: []string{">"},
 		},
 	}
@@ -439,6 +441,7 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 
 	natsim.nc, err = nats.Connect(natsim.Nats.Server,
 		optSeed,
+		nats.Name(natsim.Nats.Name),
 		nats.ConnectHandler(natsim.natsConnected),
 		nats.DisconnectErrHandler(natsim.natsDisconnected),
 		nats.ReconnectHandler(natsim.natsReconnected),
