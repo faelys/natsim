@@ -15,14 +15,15 @@ CREATE INDEX i_rtime ON received(timestamp);
 CREATE INDEX i_rsubjectid ON received(subject_id);
 
 CREATE TABLE sent
-   (timestamp REAL NOT NULL,
+   (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp REAL NOT NULL,
     subject_id INTEGER NOT NULL,
     data TEXT NOT NULL,
     reply_subject_id INTEGER,
     FOREIGN KEY (subject_id) REFERENCES subjects (id),
     FOREIGN KEY (reply_subject_id) REFERENCES subjects (id));
-CREATE INDEX i_stime ON received(timestamp);
-CREATE INDEX i_ssubjectid ON received(subject_id);
+CREATE INDEX i_stime ON sent(timestamp);
+CREATE INDEX i_ssubjectid ON sent(subject_id);
 
 CREATE VIEW received_view (timestamp,subject,reply_subject,data)
  AS SELECT datetime(timestamp),subjects.name,rsub.name,data
@@ -111,6 +112,28 @@ BEGIN
       SELECT NEW.key,NEW.value WHERE NOT EXISTS
       (SELECT 1 FROM headers_view WHERE key = NEW.key AND value = NEW.value);
     INSERT INTO received_headers(msg_id,header_id)
+      VALUES (NEW.msg_id,
+              (SELECT id FROM headers_view WHERE key = NEW.key AND value = NEW.value));
+END;
+
+CREATE TABLE sent_headers
+   (msg_id INTEGER NOT NULL,
+    header_id INTEGER NOT NULL,
+    FOREIGN KEY (msg_id) REFERENCES sent (id),
+    FOREIGN KEY (header_id) REFERENCES headers (id));
+
+CREATE VIEW sent_headers_view (msg_id,key,value)
+ AS SELECT msg_id,header_keys.name,headers.value
+    FROM sent_headers
+         LEFT OUTER JOIN headers ON headers.id = header_id
+         LEFT OUTER JOIN header_keys ON header_keys.id = headers.key_id;
+
+CREATE TRIGGER insert_sent_header INSTEAD OF INSERT ON sent_headers_view
+BEGIN
+    INSERT INTO headers_view(key,value)
+      SELECT NEW.key,NEW.value WHERE NOT EXISTS
+      (SELECT 1 FROM headers_view WHERE key = NEW.key AND value = NEW.value);
+    INSERT INTO sent_headers(msg_id,header_id)
       VALUES (NEW.msg_id,
               (SELECT id FROM headers_view WHERE key = NEW.key AND value = NEW.value));
 END;

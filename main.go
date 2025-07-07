@@ -111,6 +111,7 @@ type NatsIM struct {
 	insertReceived *sql.Stmt
 	insertRHeader  *sql.Stmt
 	insertSent     *sql.Stmt
+	insertSHeader  *sql.Stmt
 	cmdQueue       chan command
 	ircQueue       chan string
 	dropped        atomic.Uint32
@@ -224,6 +225,13 @@ func (natsim *NatsIM) Close() {
 			log.Println("Close insertSent:", err)
 		}
 		natsim.insertSent = nil
+	}
+
+	if natsim.insertSHeader != nil {
+		if err := natsim.insertSHeader.Close(); err != nil {
+			log.Println("Close insertSHeader:", err)
+		}
+		natsim.insertSHeader = nil
 	}
 
 	if natsim.db != nil {
@@ -465,10 +473,11 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 	if name, arg, found := unpackMark(natsim.Irc.Cmd, msg, true); found {
 		natsim.cmdQueue <- command{name: name, arg: arg}
 	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
-		if err := natsim.nc.Publish(subject, []byte(data)); err != nil {
+		nMsg := nats.Msg{Subject: subject, Data: []byte(data)}
+		if err := natsim.nc.PublishMsg(&nMsg); err != nil {
 			natsim.ircSendError("Publish", err)
 		} else {
-			natsim.logSent(subject, data)
+			natsim.logSent(&nMsg)
 		}
 	}
 }
@@ -699,16 +708,22 @@ func (natsim *NatsIM) logInit() error {
 		return err
 	}
 
-	natsim.insertSent, err = natsim.db.Prepare("INSERT INTO sent_view(timestamp,subject,data) VALUES (?,?,?);")
+	natsim.insertSent, err = natsim.db.Prepare("INSERT INTO sent(timestamp,subject_id,reply_subject_id,data) VALUES (?, (SELECT id FROM subjects WHERE name = ?), (SELECT id FROM subjects WHERE name = ?), ?);")
 	if err != nil {
 		log.Println("Prepare insertSent:", err)
+		return err
+	}
+
+	natsim.insertSHeader, err = natsim.db.Prepare("INSERT INTO sent_headers_view(msg_id,key,value) VALUES (?,?,?);")
+	if err != nil {
+		log.Println("Prepare insertSHeader:", err)
 		return err
 	}
 
 	return nil
 }
 
-func (natsim *NatsIM) logReceived(msg *nats.Msg) {
+func (natsim *NatsIM) logMsg(msg *nats.Msg, insertMsg, insertHeader *sql.Stmt) {
 	if natsim.db == nil || natsim.insertReceived == nil {
 		return
 	}
@@ -728,8 +743,8 @@ func (natsim *NatsIM) logReceived(msg *nats.Msg) {
 	}
 
 	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
-	if r, err := natsim.insertReceived.Exec(t, msg.Subject, reply, msg.Data); err != nil {
-		natsim.ircSendError("insertReceived.Exec", err)
+	if r, err := insertMsg.Exec(t, msg.Subject, reply, msg.Data); err != nil {
+		natsim.ircSendError("insertMsg.Exec", err)
 	} else if id, err := r.LastInsertId(); err != nil {
 		natsim.ircSendError("LastInsertId", err)
 	} else if id <= 0 {
@@ -737,23 +752,20 @@ func (natsim *NatsIM) logReceived(msg *nats.Msg) {
 	} else {
 		for key, values := range msg.Header {
 			for _, value := range values {
-				if _, err := natsim.insertRHeader.Exec(id, key, value); err != nil {
-					natsim.ircSendf("insertRHeader(%q, %q): %s", key, value, err)
+				if _, err := insertHeader.Exec(id, key, value); err != nil {
+					natsim.ircSendf("insertHeader(%q, %q): %s", key, value, err)
 				}
 			}
 		}
 	}
 }
 
-func (natsim *NatsIM) logSent(subject, data string) {
-	if natsim.db == nil || natsim.insertSent == nil {
-		return
-	}
+func (natsim *NatsIM) logReceived(msg *nats.Msg) {
+	natsim.logMsg(msg, natsim.insertReceived, natsim.insertRHeader)
+}
 
-	t := float64(time.Now().UnixNano())/8.64e13 + 2440587.5
-	if _, err := natsim.insertSent.Exec(t, subject, data); err != nil {
-		natsim.ircSendError("insertSent.Exec", err)
-	}
+func (natsim *NatsIM) logSent(msg *nats.Msg) {
+	natsim.logMsg(msg, natsim.insertSent, natsim.insertSHeader)
 }
 
 /**************** Filters ****************/
