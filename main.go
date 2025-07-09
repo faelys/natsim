@@ -106,6 +106,7 @@ type NatsIM struct {
 	irc            *irc.Connection
 	nc             *nats.Conn
 	subs           []*nats.Subscription
+	curMsg         nats.Msg
 	db             *sql.DB
 	ensureSubject  *sql.Stmt
 	insertReceived *sql.Stmt
@@ -318,6 +319,11 @@ func (natsim *NatsIM) doCommands() {
 			WriteFilter(&buf, "\n I", natsim.Irc.Filter)
 			natsim.ircSend(buf.String())
 
+		case "reply-to":
+			fallthrough
+		case "replyto":
+			natsim.curMsg.Reply = cmd.arg
+
 		case "status":
 			var buf strings.Builder
 
@@ -473,12 +479,14 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 	if name, arg, found := unpackMark(natsim.Irc.Cmd, msg, true); found {
 		natsim.cmdQueue <- command{name: name, arg: arg}
 	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
-		nMsg := nats.Msg{Subject: subject, Data: []byte(data)}
-		if err := natsim.nc.PublishMsg(&nMsg); err != nil {
+		natsim.curMsg.Subject = subject
+		natsim.curMsg.Data = []byte(data)
+		if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
 			natsim.ircSendError("Publish", err)
 		} else {
-			natsim.logSent(&nMsg)
+			natsim.logSent(&natsim.curMsg)
 		}
+		natsim.curMsg = nats.Msg{}
 	}
 }
 
