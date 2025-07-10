@@ -319,6 +319,20 @@ func (natsim *NatsIM) doCommands() {
 			WriteFilter(&buf, "\n I", natsim.Irc.Filter)
 			natsim.ircSend(buf.String())
 
+		case "header":
+			sep := ": "
+			if natsim.Irc.ShowHeader != nil {
+				sep = natsim.Irc.ShowHeader.Mid
+			}
+			if key, value, found := strings.Cut(cmd.arg, sep); !found {
+				natsim.ircSendf("No header separator %q", sep)
+			} else {
+				if natsim.curMsg.Header == nil {
+					natsim.curMsg.Header = make(nats.Header)
+				}
+				natsim.curMsg.Header[key] = append(natsim.curMsg.Header[key], value)
+			}
+
 		case "reply-to":
 			fallthrough
 		case "replyto":
