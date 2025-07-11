@@ -256,6 +256,32 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "curmsg":
+			var sb strings.Builder
+			sb.WriteString("[WIP]")
+
+			if natsim.curMsg.Reply != "" {
+				show := LineMark{Start: "Reply-To:"}
+				if natsim.Irc.ShowReply != nil {
+					show = *natsim.Irc.ShowReply
+				}
+				sb.WriteString(show.Start)
+				sb.WriteString(natsim.curMsg.Reply)
+				sb.WriteString(show.End)
+			}
+
+			show := LineMark{Mid: ": "}
+			if natsim.Irc.ShowHeader != nil {
+				show = *natsim.Irc.ShowHeader
+			}
+			for key, values := range natsim.curMsg.Header {
+				for _, value := range values {
+					sb.WriteString(packMark(show, key, value))
+				}
+			}
+
+			natsim.ircSend(sb.String())
+
 		case "filter":
 			var plist *[]FilterElement
 			var name string
