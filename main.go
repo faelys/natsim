@@ -282,6 +282,29 @@ func (natsim *NatsIM) doCommands() {
 
 			natsim.ircSend(sb.String())
 
+		case "delheader":
+			index := -1
+			key := cmd.arg
+
+			if strings.HasPrefix(cmd.arg, "* ") {
+				key = key[2:]
+			} else if before, after, found := strings.Cut(cmd.arg, " "); found {
+				if n, err := strconv.Atoi(before); err == nil {
+					index = n
+					key = after
+				}
+			}
+
+			if natsim.curMsg.Header == nil || natsim.curMsg.Header[key] == nil {
+				natsim.ircSendf("No recorded header %q", key)
+			} else if index < 0 {
+				delete(natsim.curMsg.Header, key)
+			} else if index < len(natsim.curMsg.Header[key]) {
+				natsim.curMsg.Header[key] = append(natsim.curMsg.Header[key][:index], natsim.curMsg.Header[key][index+1:]...)
+			} else {
+				natsim.ircSendf("No index %d in header %q", index, key)
+			}
+
 		case "filter":
 			var plist *[]FilterElement
 			var name string
