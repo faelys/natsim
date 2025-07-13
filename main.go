@@ -259,6 +259,9 @@ func (natsim *NatsIM) doCommands() {
 		case "curmsg":
 			var sb strings.Builder
 			sb.WriteString("[WIP]")
+			sb.WriteString(packMark(natsim.Irc.Show,
+				natsim.curMsg.Subject,
+				string(natsim.curMsg.Data)))
 
 			if natsim.curMsg.Reply != "" {
 				show := LineMark{Start: "Reply-To:"}
@@ -304,6 +307,9 @@ func (natsim *NatsIM) doCommands() {
 			} else {
 				natsim.ircSendf("No index %d in header %q", index, key)
 			}
+
+		case "data":
+			natsim.curMsg.Data = []byte(cmd.arg)
 
 		case "filter":
 			var plist *[]FilterElement
@@ -387,6 +393,16 @@ func (natsim *NatsIM) doCommands() {
 		case "replyto":
 			natsim.curMsg.Reply = cmd.arg
 
+		case "send":
+			if natsim.curMsg.Subject == "" {
+				natsim.ircSend("Cannot send message without subject")
+			} else if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
+				natsim.ircSendError("Publish", err)
+			} else {
+				natsim.logSent(&natsim.curMsg)
+			}
+			natsim.curMsg = nats.Msg{}
+
 		case "status":
 			var buf strings.Builder
 
@@ -410,6 +426,9 @@ func (natsim *NatsIM) doCommands() {
 
 			buf.WriteString(fmt.Sprintf(", %d subscriptions\n%s", natsim.nc.NumSubscriptions(), natsim.natsStats()))
 			natsim.ircSend(buf.String())
+
+		case "subject":
+			natsim.curMsg.Subject = cmd.arg
 
 		case "subscribe":
 			if s, err := natsim.nc.Subscribe(cmd.arg, natsim.natsReceive); err != nil {
