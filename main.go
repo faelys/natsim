@@ -256,6 +256,9 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "clearmsg":
+			natsim.curMsg = nats.Msg{}
+
 		case "curmsg":
 			var sb strings.Builder
 			sb.WriteString("[WIP]")
