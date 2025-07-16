@@ -83,6 +83,10 @@ type IrcConfig struct {
 	AntiFlood  antiflood
 	Filter     []FilterElement
 	AutoClear  bool
+	AllowCmd   []string
+	AllowSend  []string
+	BlockCmd   []string
+	BlockSend  []string
 }
 
 type LogConfig struct {
@@ -579,17 +583,21 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 func (natsim *NatsIM) ircReceive(e *irc.Event) {
 	msg := e.Message()
 	if name, arg, found := unpackMark(natsim.Irc.Cmd, msg, true); found {
-		natsim.cmdQueue <- command{name: name, arg: arg}
-	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
-		natsim.curMsg.Subject = subject
-		natsim.curMsg.Data = []byte(data)
-		if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
-			natsim.ircSendError("Publish", err)
-		} else {
-			natsim.logSent(&natsim.curMsg)
+		if nickAllowed(e.Nick, natsim.Irc.AllowSend, natsim.Irc.BlockSend) {
+			natsim.cmdQueue <- command{name: name, arg: arg}
 		}
-		if natsim.Irc.AutoClear {
-			natsim.curMsg = nats.Msg{}
+	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
+		if nickAllowed(e.Nick, natsim.Irc.AllowCmd, natsim.Irc.BlockCmd) {
+			natsim.curMsg.Subject = subject
+			natsim.curMsg.Data = []byte(data)
+			if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
+				natsim.ircSendError("Publish", err)
+			} else {
+				natsim.logSent(&natsim.curMsg)
+			}
+			if natsim.Irc.AutoClear {
+				natsim.curMsg = nats.Msg{}
+			}
 		}
 	}
 }
@@ -880,7 +888,7 @@ func (natsim *NatsIM) logSent(msg *nats.Msg) {
 	natsim.logMsg(msg, natsim.insertSent, natsim.insertSHeader)
 }
 
-/**************** Filters ****************/
+/**************** Message Filters ****************/
 
 type FilterElement struct {
 	Result bool
@@ -973,6 +981,24 @@ func IsKept(subject string, data []byte, elements []FilterElement, base bool) bo
 	}
 
 	return base
+}
+
+/**************** Nick Filters ****************/
+
+func nickAllowed(nick string, allowedList, blockedList []string) bool {
+	for _, blocked := range blockedList {
+		if nick == blocked {
+			return false
+		}
+	}
+
+	for _, allowed := range allowedList {
+		if nick == allowed {
+			return true
+		}
+	}
+
+	return len(allowedList) == 0
 }
 
 /**************** Tools ****************/
