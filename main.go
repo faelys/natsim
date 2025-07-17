@@ -259,6 +259,14 @@ func (natsim *NatsIM) doCommands() {
 		}
 
 		switch cmd.name {
+		case "allowcmd":
+			updateNickList(cmd.arg, &natsim.Irc.AllowCmd, &natsim.Irc.BlockCmd)
+			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.AllowCmd), strNickList(natsim.Irc.BlockCmd))
+
+		case "allowsend":
+			updateNickList(cmd.arg, &natsim.Irc.AllowSend, &natsim.Irc.BlockSend)
+			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.AllowSend), strNickList(natsim.Irc.BlockSend))
+
 		case "autoclear":
 			switch cmd.arg {
 			case "":
@@ -274,6 +282,14 @@ func (natsim *NatsIM) doCommands() {
 			default:
 				natsim.ircSendf("Unknown autoclear option %q", cmd.arg)
 			}
+
+		case "blockcmd":
+			updateNickList(cmd.arg, &natsim.Irc.BlockCmd, &natsim.Irc.AllowCmd)
+			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.BlockCmd), strNickList(natsim.Irc.AllowCmd))
+
+		case "blocksend":
+			updateNickList(cmd.arg, &natsim.Irc.BlockSend, &natsim.Irc.AllowSend)
+			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.BlockSend), strNickList(natsim.Irc.AllowSend))
 
 		case "clearmsg":
 			natsim.curMsg = nats.Msg{}
@@ -985,6 +1001,33 @@ func IsKept(subject string, data []byte, elements []FilterElement, base bool) bo
 
 /**************** Nick Filters ****************/
 
+func updateNickList(nick string, directList, oppositeList *[]string) {
+	if nick == "" {
+		return
+	}
+
+	n := 0
+	for _, v := range *oppositeList {
+		if v != nick {
+			(*oppositeList)[n] = v
+			n++
+		}
+	}
+
+	if n < len(*oppositeList) {
+		*oppositeList = (*oppositeList)[0:n]
+		return
+	}
+
+	for _, v := range *directList {
+		if v == nick {
+			return
+		}
+	}
+
+	*directList = append(*directList, nick)
+}
+
 func nickAllowed(nick string, allowedList, blockedList []string) bool {
 	for _, blocked := range blockedList {
 		if nick == blocked {
@@ -999,6 +1042,27 @@ func nickAllowed(nick string, allowedList, blockedList []string) bool {
 	}
 
 	return len(allowedList) == 0
+}
+
+func strNickList(nickList []string) string {
+	if len(nickList) == 0 {
+		return "[]"
+	}
+
+	var sb strings.Builder
+
+	for i, nick := range nickList {
+		if i == 0 {
+			sb.WriteString("[ ")
+		} else {
+			sb.WriteString(", ")
+		}
+
+		sb.WriteString(fmt.Sprintf("%q", nick))
+	}
+
+	sb.WriteString(" ]")
+	return sb.String()
 }
 
 /**************** Tools ****************/
