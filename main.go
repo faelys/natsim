@@ -744,8 +744,28 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 		return
 	}
 
+	strdata := string(m.Data)
+	suffix := 0
+	for len(strdata) > 0 && strdata[len(strdata)-1] == '\n' {
+		suffix++
+		strdata = strdata[0 : len(strdata)-1]
+	}
+
+	var data strings.Builder
+	for i, line := range strings.Split(strdata, "\n") {
+		if i > 0 {
+			data.WriteString("\n")
+		}
+		qline := strconv.QuoteToGraphic(line)
+		if qline[0] != '"' || qline[len(qline)-1] != '"' {
+			panic("Expected double-quotes")
+		}
+		data.WriteString(qline[1 : len(qline)-1])
+	}
+	data.WriteString(strings.Repeat("\\n", suffix))
+
 	var sb strings.Builder
-	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, string(m.Data)))
+	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, data.String()))
 
 	if m.Reply != "" && natsim.Irc.ShowReply != nil {
 		sb.WriteString(natsim.Irc.ShowReply.Start)
