@@ -604,8 +604,17 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 		}
 	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
 		if nickAllowed(e.Nick, natsim.Irc.AllowCmd, natsim.Irc.BlockCmd) {
+			if len(data) >= 2 && data[0] == data[len(data)-1] && (data[0] == '"' || data[0] == '`') {
+				if unquoted, err := strconv.Unquote(data); err == nil {
+					data = unquoted
+				}
+			} else if unquoted, err := strconv.Unquote("\"" + data + "\""); err == nil {
+				data = unquoted
+			}
+
 			natsim.curMsg.Subject = subject
 			natsim.curMsg.Data = []byte(data)
+
 			if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
 				natsim.ircSendError("Publish", err)
 			} else {
