@@ -426,6 +426,13 @@ func (natsim *NatsIM) doCommands() {
 				natsim.curMsg.Header[key] = append(natsim.curMsg.Header[key], value)
 			}
 
+		case "qdata":
+			if unquoted, err := strconv.Unquote(cmd.arg); err != nil {
+				natsim.ircSendError("Unquote", err)
+			} else {
+				natsim.curMsg.Data = []byte(unquoted)
+			}
+
 		case "reply-to":
 			fallthrough
 		case "replyto":
