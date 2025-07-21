@@ -299,7 +299,7 @@ func (natsim *NatsIM) doCommands() {
 			sb.WriteString("[WIP]")
 			sb.WriteString(packMark(natsim.Irc.Show,
 				natsim.curMsg.Subject,
-				string(natsim.curMsg.Data)))
+				natsim.ircQuoteData(natsim.curMsg.Data)))
 
 			if natsim.curMsg.Reply != "" {
 				show := LineMark{Start: "Reply-To:"}
@@ -603,6 +603,29 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 	}
 }
 
+func (natsim *NatsIM) ircQuoteData(data []byte) string {
+	strdata := string(data)
+	suffix := 0
+	for len(strdata) > 0 && strdata[len(strdata)-1] == '\n' {
+		suffix++
+		strdata = strdata[0 : len(strdata)-1]
+	}
+
+	var quoted strings.Builder
+	for i, line := range strings.Split(strdata, "\n") {
+		if i > 0 {
+			quoted.WriteString("\n")
+		}
+		qline := strconv.QuoteToGraphic(line)
+		if qline[0] != '"' || qline[len(qline)-1] != '"' {
+			panic("Expected double-quotes")
+		}
+		quoted.WriteString(qline[1 : len(qline)-1])
+	}
+	quoted.WriteString(strings.Repeat("\\n", suffix))
+	return quoted.String()
+}
+
 func (natsim *NatsIM) ircReceive(e *irc.Event) {
 	msg := e.Message()
 	if name, arg, found := unpackMark(natsim.Irc.Cmd, msg, true); found {
@@ -760,28 +783,8 @@ func (natsim *NatsIM) natsReceive(m *nats.Msg) {
 		return
 	}
 
-	strdata := string(m.Data)
-	suffix := 0
-	for len(strdata) > 0 && strdata[len(strdata)-1] == '\n' {
-		suffix++
-		strdata = strdata[0 : len(strdata)-1]
-	}
-
-	var data strings.Builder
-	for i, line := range strings.Split(strdata, "\n") {
-		if i > 0 {
-			data.WriteString("\n")
-		}
-		qline := strconv.QuoteToGraphic(line)
-		if qline[0] != '"' || qline[len(qline)-1] != '"' {
-			panic("Expected double-quotes")
-		}
-		data.WriteString(qline[1 : len(qline)-1])
-	}
-	data.WriteString(strings.Repeat("\\n", suffix))
-
 	var sb strings.Builder
-	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, data.String()))
+	sb.WriteString(packMark(natsim.Irc.Show, m.Subject, natsim.ircQuoteData(m.Data)))
 
 	if m.Reply != "" && natsim.Irc.ShowReply != nil {
 		sb.WriteString(natsim.Irc.ShowReply.Start)
