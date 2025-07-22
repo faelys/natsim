@@ -291,6 +291,9 @@ func (natsim *NatsIM) doCommands() {
 			updateNickList(cmd.arg, &natsim.Irc.BlockSend, &natsim.Irc.AllowSend)
 			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.BlockSend), strNickList(natsim.Irc.AllowSend))
 
+		case "cleardata":
+			natsim.curMsg.Data = []byte{}
+
 		case "clearmsg":
 			natsim.curMsg = nats.Msg{}
 
@@ -347,7 +350,7 @@ func (natsim *NatsIM) doCommands() {
 			}
 
 		case "data":
-			natsim.curMsg.Data = []byte(cmd.arg)
+			natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(cmd.arg)...)
 
 		case "filter":
 			var plist *[]FilterElement
@@ -430,7 +433,7 @@ func (natsim *NatsIM) doCommands() {
 			if unquoted, err := strconv.Unquote(cmd.arg); err != nil {
 				natsim.ircSendError("Unquote", err)
 			} else {
-				natsim.curMsg.Data = []byte(unquoted)
+				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(unquoted)...)
 			}
 
 		case "reply-to":
