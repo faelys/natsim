@@ -436,6 +436,11 @@ func (natsim *NatsIM) doCommands() {
 				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(unquoted)...)
 			}
 
+		case "quit":
+			log.Println("Quit command", cmd.arg)
+			natsim.irc.QuitMessage = cmd.arg
+			natsim.Close()
+
 		case "reply-to":
 			fallthrough
 		case "replyto":
@@ -495,11 +500,6 @@ func (natsim *NatsIM) doCommands() {
 				buf.WriteString(fmt.Sprintf("\n%d. %s", i+1, s.Subject))
 			}
 			natsim.ircSend(buf.String())
-
-		case "quit":
-			log.Println("Quit command", cmd.arg)
-			natsim.irc.QuitMessage = cmd.arg
-			natsim.Close()
 
 		case "unfilter":
 			uplace := strings.ToUpper(cmd.arg)
