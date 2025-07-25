@@ -83,6 +83,7 @@ type IrcConfig struct {
 	AntiFlood  antiflood
 	Filter     []FilterElement
 	AutoClear  bool
+	nextClear  bool
 	AllowCmd   []string
 	AllowSend  []string
 	BlockCmd   []string
@@ -171,6 +172,8 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 			return nil, err
 		}
 	}
+
+	natsim.Irc.nextClear = natsim.Irc.AutoClear
 
 	natsim.cmdQueue = make(chan command, 10)
 	natsim.ircQueue = make(chan string, 10)
@@ -270,15 +273,27 @@ func (natsim *NatsIM) doCommands() {
 		case "autoclear":
 			switch cmd.arg {
 			case "":
-				if natsim.Irc.AutoClear {
-					natsim.ircSend("Autoclear is on")
-				} else {
-					natsim.ircSend("Autoclear is off")
+				temp := ""
+				state := "off"
+				if natsim.Irc.AutoClear != natsim.Irc.nextClear {
+					temp = "temporarily "
 				}
+				if natsim.Irc.AutoClear {
+					state = "on"
+				}
+				natsim.ircSendf("Autoclear is %s%s", temp, state)
+			case "after":
+				natsim.Irc.AutoClear = false
+				natsim.Irc.nextClear = true
 			case "on":
 				natsim.Irc.AutoClear = true
+				natsim.Irc.nextClear = true
+			case "once":
+				natsim.Irc.AutoClear = true
+				natsim.Irc.nextClear = false
 			case "off":
 				natsim.Irc.AutoClear = false
+				natsim.Irc.nextClear = false
 			default:
 				natsim.ircSendf("Unknown autoclear option %q", cmd.arg)
 			}
@@ -464,6 +479,7 @@ func (natsim *NatsIM) doCommands() {
 			if natsim.Irc.AutoClear {
 				natsim.curMsg = nats.Msg{}
 			}
+			natsim.Irc.AutoClear = natsim.Irc.nextClear
 
 		case "status":
 			var buf strings.Builder
@@ -663,6 +679,7 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 			if natsim.Irc.AutoClear {
 				natsim.curMsg = nats.Msg{}
 			}
+			natsim.Irc.AutoClear = natsim.Irc.nextClear
 		}
 	}
 }
