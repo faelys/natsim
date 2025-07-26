@@ -19,6 +19,8 @@ package main
 import (
 	"database/sql"
 	"embed"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -298,6 +300,13 @@ func (natsim *NatsIM) doCommands() {
 				natsim.ircSendf("Unknown autoclear option %q", cmd.arg)
 			}
 
+		case "b64data":
+			if decoded, err := base64.StdEncoding.DecodeString(cmd.arg); err != nil {
+				natsim.ircSendError("b64Decode", err)
+			} else {
+				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(decoded)...)
+			}
+
 		case "blockcmd":
 			updateNickList(cmd.arg, &natsim.Irc.BlockCmd, &natsim.Irc.AllowCmd)
 			natsim.ircSendf("%s - %s", strNickList(natsim.Irc.BlockCmd), strNickList(natsim.Irc.AllowCmd))
@@ -429,6 +438,13 @@ func (natsim *NatsIM) doCommands() {
 			WriteFilter(&buf, "\n L", natsim.Log.Filter)
 			WriteFilter(&buf, "\n I", natsim.Irc.Filter)
 			natsim.ircSend(buf.String())
+
+		case "hdata":
+			if decoded, err := hex.DecodeString(cmd.arg); err != nil {
+				natsim.ircSendError("hexDecode", err)
+			} else {
+				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(decoded)...)
+			}
 
 		case "header":
 			sep := ": "
