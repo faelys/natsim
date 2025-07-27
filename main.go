@@ -676,9 +676,20 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 		}
 	} else if subject, data, found := unpackMark(natsim.Irc.Send, msg, false); found {
 		if nickAllowed(e.Nick, natsim.Irc.AllowCmd, natsim.Irc.BlockCmd) {
-			if len(data) >= 2 && data[0] == data[len(data)-1] && (data[0] == '"' || data[0] == '`') {
-				if unquoted, err := strconv.Unquote(data); err == nil {
-					data = unquoted
+			if len(data) >= 2 && data[0] == data[len(data)-1] && (data[0] == '"' || data[0] == '`' || data[0] == '#' || data[0] == '|') {
+				switch data[0] {
+				case '#':
+					if decoded, err := hex.DecodeString(data[1:len(data)-1]); err == nil {
+						data = string(decoded)
+					}
+				case '|':
+					if decoded, err := base64.StdEncoding.DecodeString(data[1:len(data)-1]); err == nil {
+						data = string(decoded)
+					}
+				default:
+					if unquoted, err := strconv.Unquote(data); err == nil {
+						data = unquoted
+					}
 				}
 			} else if unquoted, err := strconv.Unquote("\"" + data + "\""); err == nil {
 				data = unquoted
