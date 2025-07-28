@@ -679,24 +679,34 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 			if len(data) >= 2 && data[0] == data[len(data)-1] && (data[0] == '"' || data[0] == '`' || data[0] == '#' || data[0] == '|') {
 				switch data[0] {
 				case '#':
-					if decoded, err := hex.DecodeString(data[1:len(data)-1]); err == nil {
-						data = string(decoded)
+					if decoded, err := hex.DecodeString(data[1 : len(data)-1]); err != nil {
+						natsim.ircSendError("hexDecode", err)
+						return
+					} else {
+						natsim.curMsg.Data = decoded
 					}
 				case '|':
-					if decoded, err := base64.StdEncoding.DecodeString(data[1:len(data)-1]); err == nil {
-						data = string(decoded)
+					if decoded, err := base64.StdEncoding.DecodeString(data[1 : len(data)-1]); err != nil {
+						natsim.ircSendError("b64Decode", err)
+						return
+					} else {
+						natsim.curMsg.Data = decoded
 					}
 				default:
-					if unquoted, err := strconv.Unquote(data); err == nil {
-						data = unquoted
+					if unquoted, err := strconv.Unquote(data); err != nil {
+						natsim.ircSendError("Unquote", err)
+						return
+					} else {
+						natsim.curMsg.Data = []byte(unquoted)
 					}
 				}
 			} else if unquoted, err := strconv.Unquote("\"" + data + "\""); err == nil {
-				data = unquoted
+				natsim.curMsg.Data = []byte(unquoted)
+			} else {
+				natsim.curMsg.Data = []byte(data)
 			}
 
 			natsim.curMsg.Subject = subject
-			natsim.curMsg.Data = []byte(data)
 
 			if err := natsim.nc.PublishMsg(&natsim.curMsg); err != nil {
 				natsim.ircSendError("Publish", err)
