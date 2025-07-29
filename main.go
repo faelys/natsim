@@ -301,7 +301,7 @@ func (natsim *NatsIM) doCommands() {
 			}
 
 		case "b64data":
-			if decoded, err := base64.StdEncoding.DecodeString(cmd.arg); err != nil {
+			if decoded, err := b64Decode(cmd.arg); err != nil {
 				natsim.ircSendError("b64Decode", err)
 			} else {
 				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(decoded)...)
@@ -440,7 +440,7 @@ func (natsim *NatsIM) doCommands() {
 			natsim.ircSend(buf.String())
 
 		case "hdata":
-			if decoded, err := hex.DecodeString(cmd.arg); err != nil {
+			if decoded, err := hexDecode(cmd.arg); err != nil {
 				natsim.ircSendError("hexDecode", err)
 			} else {
 				natsim.curMsg.Data = append(natsim.curMsg.Data, []byte(decoded)...)
@@ -679,14 +679,14 @@ func (natsim *NatsIM) ircReceive(e *irc.Event) {
 			if len(data) >= 2 && data[0] == data[len(data)-1] && (data[0] == '"' || data[0] == '`' || data[0] == '#' || data[0] == '|') {
 				switch data[0] {
 				case '#':
-					if decoded, err := hex.DecodeString(data[1 : len(data)-1]); err != nil {
+					if decoded, err := hexDecode(data[1 : len(data)-1]); err != nil {
 						natsim.ircSendError("hexDecode", err)
 						return
 					} else {
 						natsim.curMsg.Data = decoded
 					}
 				case '|':
-					if decoded, err := base64.StdEncoding.DecodeString(data[1 : len(data)-1]); err != nil {
+					if decoded, err := b64Decode(data[1 : len(data)-1]); err != nil {
 						natsim.ircSendError("b64Decode", err)
 						return
 					} else {
@@ -1197,6 +1197,16 @@ func (af *antiflood) UnmarshalText(text []byte) error {
 	}
 
 	return nil
+}
+
+func b64Decode(s string) ([]byte, error) {
+	stripped := strings.ReplaceAll(s, " ", "")
+	return base64.StdEncoding.DecodeString(stripped)
+}
+
+func hexDecode(s string) ([]byte, error) {
+	stripped := strings.ReplaceAll(s, " ", "")
+	return hex.DecodeString(stripped)
 }
 
 func humanizeNum(n uint64) string {
