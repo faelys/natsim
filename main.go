@@ -666,7 +666,7 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 	}
 	quoted.WriteString(strings.Repeat("\\n", suffix))
 
-	if quoted.Len() >= 2 * len(data) {
+	if quoted.Len() >= 2*len(data) {
 		return "#" + hex.EncodeToString(data) + "#"
 	}
 	return quoted.String()
