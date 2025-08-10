@@ -99,11 +99,12 @@ type LogConfig struct {
 }
 
 type NatsConfig struct {
-	Name     string
-	Server   string
-	NkeySeed string
-	Subjects []string
-	Filter   []FilterElement
+	Name                 string
+	Server               string
+	NkeySeed             string
+	Subjects             []string
+	Filter               []FilterElement
+	RetryOnFailedConnect bool
 }
 
 type NatsIM struct {
@@ -627,6 +628,7 @@ func (natsim *NatsIM) ircJoined(e *irc.Event) {
 	natsim.nc, err = nats.Connect(natsim.Nats.Server,
 		optSeed,
 		nats.Name(natsim.Nats.Name),
+		nats.RetryOnFailedConnect(natsim.Nats.RetryOnFailedConnect),
 		nats.ConnectHandler(natsim.natsConnected),
 		nats.DisconnectErrHandler(natsim.natsDisconnected),
 		nats.ReconnectHandler(natsim.natsReconnected),
