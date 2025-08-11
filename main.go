@@ -188,6 +188,7 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 
 	err = natsim.irc.Connect(natsim.Irc.Server)
 	if err != nil {
+		natsim.irc = nil
 		natsim.Close()
 		return nil, err
 	}
