@@ -71,25 +71,26 @@ type LineMark struct {
 }
 
 type IrcConfig struct {
-	Channel    string
-	Server     string
-	Nick       string
-	Cmd        LineMark
-	Send       LineMark
-	Show       LineMark
-	ShowReply  *LineMark
-	ShowHeader *LineMark
-	MaxLine    int
-	ContSuffix string
-	ContPrefix string
-	AntiFlood  antiflood
-	Filter     []FilterElement
-	AutoClear  bool
-	nextClear  bool
-	AllowCmd   []string
-	AllowSend  []string
-	BlockCmd   []string
-	BlockSend  []string
+	Channel       string
+	Server        string
+	Nick          string
+	Cmd           LineMark
+	Send          LineMark
+	Show          LineMark
+	ShowReply     *LineMark
+	ShowHeader    *LineMark
+	MaxLine       int
+	ContSuffix    string
+	ContPrefix    string
+	AntiFlood     antiflood
+	Filter        []FilterElement
+	AutoClear     bool
+	nextClear     bool
+	AllowCmd      []string
+	AllowSend     []string
+	BlockCmd      []string
+	BlockSend     []string
+	MaxQuoteRatio float32
 }
 
 type LogConfig struct {
@@ -130,11 +131,12 @@ type NatsIM struct {
 func NewNatsIM(configPath string) (*NatsIM, error) {
 	natsim := &NatsIM{
 		Irc: IrcConfig{
-			Nick:      "natsim",
-			Cmd:       LineMark{Start: "!", Mid: " "},
-			Send:      LineMark{Mid: ": "},
-			Show:      LineMark{Mid: ": "},
-			AutoClear: true,
+			Nick:          "natsim",
+			Cmd:           LineMark{Start: "!", Mid: " "},
+			Send:          LineMark{Mid: ": "},
+			Show:          LineMark{Mid: ": "},
+			AutoClear:     true,
+			MaxQuoteRatio: 2.0,
 		},
 		Nats: NatsConfig{
 			Name:     "nastim",
@@ -669,7 +671,7 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 	}
 	quoted.WriteString(strings.Repeat("\\n", suffix))
 
-	if quoted.Len() >= 2*len(data) {
+	if quoted.Len() >= int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
 		return "#" + hex.EncodeToString(data) + "#"
 	}
 	return quoted.String()
