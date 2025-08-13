@@ -91,6 +91,7 @@ type IrcConfig struct {
 	BlockCmd      []string
 	BlockSend     []string
 	MaxQuoteRatio float32
+	MaxHex        int
 }
 
 type LogConfig struct {
@@ -671,10 +672,13 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 	}
 	quoted.WriteString(strings.Repeat("\\n", suffix))
 
-	if quoted.Len() >= int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
+	if quoted.Len() < int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
+		return quoted.String()
+	} else if 2*len(data) <= natsim.Irc.MaxHex {
 		return "#" + hex.EncodeToString(data) + "#"
+	} else {
+		return "|" + base64.StdEncoding.EncodeToString(data) + "|"
 	}
-	return quoted.String()
 }
 
 func (natsim *NatsIM) ircReceive(e *irc.Event) {
