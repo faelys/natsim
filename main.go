@@ -91,6 +91,7 @@ type IrcConfig struct {
 	BlockCmd      []string
 	BlockSend     []string
 	MaxQuoteRatio float32
+	MaxBase64     int
 	MaxHex        int
 }
 
@@ -676,8 +677,10 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 		return quoted.String()
 	} else if 2*len(data) <= natsim.Irc.MaxHex {
 		return "#" + hex.EncodeToString(data) + "#"
-	} else {
+	} else if base64.StdEncoding.EncodedLen(len(data)) <= natsim.Irc.MaxBase64 {
 		return "|" + base64.StdEncoding.EncodeToString(data) + "|"
+	} else {
+		return fmt.Sprintf("<%d-byte message>", len(data))
 	}
 }
 
