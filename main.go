@@ -674,7 +674,13 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 	quoted.WriteString(strings.Repeat("\\n", suffix))
 
 	if quoted.Len() < int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
-		return quoted.String()
+		s := quoted.String()
+		switch s[0] {
+		case '"', '#', '|', '<':
+			return "\"" + s + "\""
+		default:
+			return s
+		}
 	} else if 2*len(data) <= natsim.Irc.MaxHex {
 		return "#" + hex.EncodeToString(data) + "#"
 	} else if base64.StdEncoding.EncodedLen(len(data)) <= natsim.Irc.MaxBase64 {
