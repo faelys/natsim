@@ -139,6 +139,8 @@ func NewNatsIM(configPath string) (*NatsIM, error) {
 			Show:          LineMark{Mid: ": "},
 			AutoClear:     true,
 			MaxQuoteRatio: 2.0,
+			MaxBase64:     256,
+			MaxHex:        64,
 		},
 		Nats: NatsConfig{
 			Name:     "nastim",
