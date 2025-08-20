@@ -675,7 +675,7 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 	}
 	quoted.WriteString(strings.Repeat("\\n", suffix))
 
-	if quoted.Len() < int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
+	if natsim.Irc.MaxQuoteRatio < 0 || quoted.Len() < int(natsim.Irc.MaxQuoteRatio*float32(len(data))) {
 		s := quoted.String()
 		switch s[0] {
 		case '"', '#', '|', '<':
@@ -683,9 +683,9 @@ func (natsim *NatsIM) ircQuoteData(data []byte) string {
 		default:
 			return s
 		}
-	} else if 2*len(data) <= natsim.Irc.MaxHex {
+	} else if natsim.Irc.MaxHex < 0 || 2*len(data) <= natsim.Irc.MaxHex {
 		return "#" + hex.EncodeToString(data) + "#"
-	} else if base64.StdEncoding.EncodedLen(len(data)) <= natsim.Irc.MaxBase64 {
+	} else if natsim.Irc.MaxBase64 < 0 || base64.StdEncoding.EncodedLen(len(data)) <= natsim.Irc.MaxBase64 {
 		return "|" + base64.StdEncoding.EncodeToString(data) + "|"
 	} else {
 		return fmt.Sprintf("<%d-byte message>", len(data))
