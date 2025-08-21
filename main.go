@@ -468,6 +468,33 @@ func (natsim *NatsIM) doCommands() {
 				natsim.curMsg.Header[key] = append(natsim.curMsg.Header[key], value)
 			}
 
+		case "max-base64":
+			fallthrough
+		case "maxbase64":
+			if val, err := strconv.Atoi(cmd.arg); err != nil {
+				natsim.ircSendError("Parse MaxBase64", err)
+			} else {
+				natsim.Irc.MaxBase64 = val
+			}
+
+		case "max-hex":
+			fallthrough
+		case "maxhex":
+			if val, err := strconv.Atoi(cmd.arg); err != nil {
+				natsim.ircSendError("Parse MaxHex", err)
+			} else {
+				natsim.Irc.MaxHex = val
+			}
+
+		case "max-quote-ratio":
+			fallthrough
+		case "maxquoteratio":
+			if val, err := strconv.ParseFloat(cmd.arg, 32); err != nil {
+				natsim.ircSendError("Parse MaxQuoteRatio", err)
+			} else {
+				natsim.Irc.MaxQuoteRatio = float32(val)
+			}
+
 		case "new-inbox":
 			fallthrough
 		case "newinbox":
